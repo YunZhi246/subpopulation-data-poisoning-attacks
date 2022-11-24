@@ -41,6 +41,19 @@ def get_bert_name():
     return 'bert-base-uncased'
 
 
+def get_model_name():
+    """ Utility to get the identifier of the BERT model to use.
+
+    Returns:
+        str: identifier of the BERT model
+    """
+
+    return 'bert'
+
+def get_model_class():
+    return BertForSequenceClassification
+
+
 def get_device():
     """ Return string identifier of available device
 
@@ -534,7 +547,8 @@ def train_bert(model_id, device, train_dl, lr, tot_steps, epochs, save='', froze
             optimizer, list of train losses, list of train accuracies
     """
 
-    model = BertForSequenceClassification.from_pretrained(
+    model_class = get_model_class()
+    model = model_class.from_pretrained(
         model_id,
         output_hidden_states=True,
         output_attentions=True,
@@ -862,7 +876,8 @@ def load_bert_torch(model_file):
         raise FileNotFoundError('Cannot find trained BERT model: {}'.format(_path))
 
     print('Loading model: {}'.format(model_file))
-    model = BertForSequenceClassification.from_pretrained(
+    model_class = get_model_class()
+    model = model_class.from_pretrained(
         model_id,
         output_hidden_states=True,
         output_attentions=True,
@@ -892,7 +907,8 @@ def load_bert_huggingface(model_file):
         raise FileNotFoundError('Cannot find trained BERT model: {}'.format(_path))
 
     print('Loading model: {}'.format(model_file))
-    model = BertForSequenceClassification.from_pretrained(
+    model_class = get_model_class()
+    model = model_class.from_pretrained(
         _path,
         output_hidden_states=True,
         output_attentions=True,

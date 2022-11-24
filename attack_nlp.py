@@ -147,10 +147,11 @@ def attack(args):
     model_name_def = args['model_name_def']
     model_name_adv = args['model_name_adv']
 
+    model_name = bert_utils.get_model_name()
     if model_name_def is None:
-        model_name_def = 'imdb_bert_{}_DEF.ckpt'.format('LL' if frozen else 'FT')
+        model_name_def = 'imdb_{}_{}_DEF.ckpt'.format(model_name, 'LL' if frozen else 'FT')
     if model_name_adv is None:
-        model_name_adv = 'imdb_bert_{}_ADV.ckpt'.format('LL' if frozen else 'FT')
+        model_name_adv = 'imdb_{}_{}_ADV.ckpt'.format(model_name, 'LL' if frozen else 'FT')
 
     # Initialization
     device = bert_utils.get_device()  # Check if cuda available
@@ -240,9 +241,10 @@ def attack(args):
             x_coll.shape, x_coll_att.shape, y_coll.shape))
 
         print('Training new model')
+        model_name = bert_utils.get_model_name()
         save_path = os.path.join(
             common.saved_models_dir,
-            'victim_bert_{}'.format(cl_ind)
+            'victim_{}_{}'.format(model_name, cl_ind)
         )
         model = bert_utils.wrap_train(
             trn_x[rand_inds],

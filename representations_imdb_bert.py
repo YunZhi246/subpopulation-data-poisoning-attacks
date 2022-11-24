@@ -27,7 +27,9 @@ def representations(args):
     # Initializations
     device = bert_utils.get_device()  # Check if cuda available
     bert_utils.set_seed(device, seed=seed)  # Seed all the PRNGs
-    model_name = 'imdb_bert_{}_{}'.format(
+    model_name = bert_utils.get_model_name()
+    model_name = 'imdb_{}_{}_{}'.format(
+        model_name,
         'LL' if frozen else 'FT',
         'DEF' if defender else 'ADV'
     )

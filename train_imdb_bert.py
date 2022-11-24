@@ -37,8 +37,9 @@ def fine_tune_bert(args):
     device = bert_utils.get_device()  # Check if cuda available
     bert_utils.set_seed(device, seed=seed)  # Seed all the PRNGs
 
-    exp_name_def = 'imdb_bert_{}_DEF'.format('LL' if frozen else 'FT')
-    exp_name_adv = 'imdb_bert_{}_ADV'.format('LL' if frozen else 'FT')
+    model_name = bert_utils.get_model_name()
+    exp_name_def = 'imdb_{}_{}_DEF'.format(model_name, 'LL' if frozen else 'FT')
+    exp_name_adv = 'imdb_{}_{}_ADV'.format(model_name, 'LL' if frozen else 'FT')
     save_model_def = os.path.join(common.saved_models_dir, exp_name_def)
     save_model_adv = os.path.join(common.saved_models_dir, exp_name_adv)
 

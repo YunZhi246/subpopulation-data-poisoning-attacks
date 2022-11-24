@@ -34,7 +34,8 @@ def init_cluster_attack(frozen, n_clusters, pca_dim):
     batch = 4  # This is fixed to avoid errors in the representation loading
 
     # Load pre-trained adversary BERT model
-    model_name_adv = 'imdb_bert_{}_ADV'.format('LL' if frozen else 'FT')
+    model_name = bert_utils.get_model_name()
+    model_name_adv = 'imdb_{}_{}_ADV'.format(model_name, 'LL' if frozen else 'FT')
     model_adv = bert_utils.load_bert(model_file=model_name_adv + '.ckpt')
 
     # Load dataset and split it into adversary and defender sets

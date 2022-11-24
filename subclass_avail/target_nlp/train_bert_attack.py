@@ -115,7 +115,8 @@ def train_bert(dataset='imdb', max_len=256, b_size=8, lr=1e-5, epochs=4,
 
     # Train the defender model
     print('Training defender model')
-    def_save_path = os.path.join(common.saved_models_dir, dataset + '_bert_def')
+    model_name = bert_utils.get_model_name()
+    def_save_path = os.path.join(common.saved_models_dir, "{}_{}_def".format(dataset, model_name))
 
     start_time = time.time()
     model_def, opt_def, loss_def, train_acc_def = bert_utils.train_bert(
@@ -154,7 +155,8 @@ def train_bert(dataset='imdb', max_len=256, b_size=8, lr=1e-5, epochs=4,
 
     # Train the attacker model
     print('Training adversary model')
-    adv_save_path = os.path.join(common.saved_models_dir, dataset + '_bert_adv')
+    model_name = bert_utils.get_model_name()
+    adv_save_path = os.path.join(common.saved_models_dir, "{}_{}_adv".format(dataset, model_name))
 
     start_time = time.time()
     model_adv, opt_adv, loss_adv, train_acc_adv = bert_utils.train_bert(

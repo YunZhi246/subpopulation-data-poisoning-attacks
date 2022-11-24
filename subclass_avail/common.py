@@ -28,6 +28,7 @@ saved_models_dir = os.path.join(storage_dir, 'saved_models')
 
 # Directory containing the results of the experiments
 results_dir_bert = os.path.join(results_dir, 'bert')
+results_dir_xlnet = os.path.join(results_dir, 'xlnet')
 
 # Directory in which to store computed representations
 #  mmap_dir = '/media/gio/storage/projects/research/advml/subclass/representations'
@@ -38,6 +39,7 @@ ALL_DIRS = [
     results_dir,
     saved_models_dir,
     results_dir_bert,
+    results_dir_xlnet,
     mmap_dir
 ]
 
