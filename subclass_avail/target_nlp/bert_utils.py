@@ -20,7 +20,7 @@ from numpy import memmap, ndarray
 from sklearn.model_selection import train_test_split
 from torch.utils.data import TensorDataset, DataLoader
 from transformers import AdamW, get_linear_schedule_with_warmup
-from transformers import BertForSequenceClassification, BertTokenizer
+from transformers import BertForSequenceClassification, AutoTokenizer, BertTokenizer
 from sklearn.metrics import confusion_matrix, classification_report, accuracy_score
 
 from subclass_avail import common
@@ -78,150 +78,150 @@ def set_seed(device, seed):
 
 # TOKENIZATION
 
-def set_bert_separator(t):
-    """ Set BERT special separator token.
+# def set_bert_separator(t):
+#     """ Set BERT special separator token.
+#
+#     Args:
+#         t (list): list of tokens in texts
+#
+#     Returns:
+#
+#     """
+#
+#     t[-1] = '[SEP]'
 
-    Args:
-        t (list): list of tokens in texts
-
-    Returns:
-
-    """
-
-    t[-1] = '[SEP]'
-
-
-def preproc_bert(tokenizer, tokenized_texts_orig, max_len):
-    """ Cut to max length, add special tokens, generate attention mask.
-
-    Args:
-        tokenizer (BertTokenizer): Bert Tokenizer object
-        tokenized_texts_orig (list): tokenized comments
-        max_len (int): maximum length of a sequence
-
-    Returns:
-
-    """
-
-    common.create_dirs()
-
-    # Cut paragraphs to max_len and set the last elements to BERT separator
-    tokenized_texts = [
-        ['[CLS]', ] + ts[: max_len - 1] for ts in tokenized_texts_orig
-    ]
-    _ = [set_bert_separator(ts) for ts in tokenized_texts]
-
-    # Tokens must be converted to BERT's vocabulary indices before
-    # passing them to the model
-    x_ids = [tokenizer.convert_tokens_to_ids(x) for x in tokenized_texts]
-
-    # Pad up to max_len with 0s
-    x_ids = [
-        np.append(
-            np.array(t),
-            np.zeros(max_len, dtype=np.int32)
-        )[:max_len] for t in x_ids
-    ]
-
-    # Compute attention mask for each vector
-    attn_mask = [[float(i > 0) for i in t] for t in x_ids]
-
-    return x_ids, attn_mask
-
-
-def worker_tokenizer(tokenizer, df, max_len):
-    """ Tokenization worker function
-
-    Args:
-        tokenizer (BertTokenizer): Bert Tokenizer object
-        df (DataFrame): DataFrame on which to operate
-        max_len (int): max length of a sequence
-
-    Returns:
-        DataFrame: tokenized and processed data
-    """
-
-    tokenized = []
-
-    for text in df['comment_text']:
-        t = tokenizer.tokenize(text)
-        tokenized.append(t)
-
-    df['tokenized_text'] = tokenized
-
-    # If `max_len` != 0 preprocess for BERT
-    if max_len:
-        x_ids, attn_mask = preproc_bert(tokenizer, tokenized, max_len)
-        df['text_ids'] = x_ids
-        df['mask'] = attn_mask
-
-    return df
+#
+# def preproc_bert(tokenizer, tokenized_texts_orig, max_len):
+#     """ Cut to max length, add special tokens, generate attention mask.
+#
+#     Args:
+#         tokenizer (BertTokenizer): Bert Tokenizer object
+#         tokenized_texts_orig (list): tokenized comments
+#         max_len (int): maximum length of a sequence
+#
+#     Returns:
+#
+#     """
+#
+#     common.create_dirs()
+#
+#     # Cut paragraphs to max_len and set the last elements to BERT separator
+#     tokenized_texts = [
+#         ['[CLS]', ] + ts[: max_len - 1] for ts in tokenized_texts_orig
+#     ]
+#     _ = [set_bert_separator(ts) for ts in tokenized_texts]
+#
+#     # Tokens must be converted to BERT's vocabulary indices before
+#     # passing them to the model
+#     x_ids = [tokenizer.convert_tokens_to_ids(x) for x in tokenized_texts]
+#
+#     # Pad up to max_len with 0s
+#     x_ids = [
+#         np.append(
+#             np.array(t),
+#             np.zeros(max_len, dtype=np.int32)
+#         )[:max_len] for t in x_ids
+#     ]
+#
+#     # Compute attention mask for each vector
+#     attn_mask = [[float(i > 0) for i in t] for t in x_ids]
+#
+#     return x_ids, attn_mask
 
 
-def parallel_tokenizer(model_id, df, n_workers=4, max_len=0):
-    """ Parallelize tokenizer execution
+# def worker_tokenizer(tokenizer, df, max_len):
+#     """ Tokenization worker function
+#
+#     Args:
+#         tokenizer (BertTokenizer): Bert Tokenizer object
+#         df (DataFrame): DataFrame on which to operate
+#         max_len (int): max length of a sequence
+#
+#     Returns:
+#         DataFrame: tokenized and processed data
+#     """
+#
+#     tokenized = []
+#
+#     for text in df['comment_text']:
+#         t = tokenizer.tokenize(text)
+#         tokenized.append(t)
+#
+#     df['tokenized_text'] = tokenized
+#
+#     # If `max_len` != 0 preprocess for BERT
+#     if max_len:
+#         x_ids, attn_mask = preproc_bert(tokenizer, tokenized, max_len)
+#         df['text_ids'] = x_ids
+#         df['mask'] = attn_mask
+#
+#     return df
 
-    Args:
-        model_id (str): identifier of the model used
-        df (DataFrame): original data
-        n_workers (int): number of workers
-        max_len (int): maximum length of a sequence, use 0 to compute statistics
+#
+# def parallel_tokenizer(model_id, df, n_workers=4, max_len=0):
+#     """ Parallelize tokenizer execution
+#
+#     Args:
+#         model_id (str): identifier of the model used
+#         df (DataFrame): original data
+#         n_workers (int): number of workers
+#         max_len (int): maximum length of a sequence, use 0 to compute statistics
+#
+#     Returns:
+#         DataFrame: tokenized and processed data
+#     """
+#
+#     # Build inputs
+#     split_df = np.array_split(df, n_workers)
+#     tokenizers = [BertTokenizer.from_pretrained(model_id)] * n_workers
+#     max_lens = [max_len] * n_workers
+#     inputs = list(zip(tokenizers, split_df, max_lens))
+#
+#     pool = Pool(processes=n_workers)
+#     results = [
+#         pool.apply(worker_tokenizer, args=inputs[i]) for i in range(n_workers)
+#     ]
+#
+#     return pd.concat(results)
 
-    Returns:
-        DataFrame: tokenized and processed data
-    """
-
-    # Build inputs
-    split_df = np.array_split(df, n_workers)
-    tokenizers = [BertTokenizer.from_pretrained(model_id)] * n_workers
-    max_lens = [max_len] * n_workers
-    inputs = list(zip(tokenizers, split_df, max_lens))
-
-    pool = Pool(processes=n_workers)
-    results = [
-        pool.apply(worker_tokenizer, args=inputs[i]) for i in range(n_workers)
-    ]
-
-    return pd.concat(results)
-
-
-def get_token_stats(train_df, model_id, n_cores=4, max_len=256):
-    """ Print out statistics on the length of tokenized texts.
-
-    Args:
-        train_df (DataFrame): original data
-        model_id (str): identifier of the transformer model
-        n_cores (int): number of workers to spawn
-        max_len (int): maximum length of a sequence
-
-    Returns:
-
-    """
-
-    start_time = time.time()
-
-    imdb_df_tk_train = parallel_tokenizer(
-        model_id=model_id,
-        df=train_df,
-        n_workers=n_cores
-    )
-
-    print('Tokenization took {:.2f} seconds'.format(time.time() - start_time))
-
-    tokenized_lens = [len(t) for t in imdb_df_tk_train['tokenized_text']]
-
-    print(describe(tokenized_lens))
-    print(".05 quantile: ", np.quantile(tokenized_lens, .05))
-    print("Q1 quartile: ", np.quantile(tokenized_lens, .25))
-    print("Q2 quartile: ", np.quantile(tokenized_lens, .50))
-    print("Q3 quartile: ", np.quantile(tokenized_lens, .75))
-    print(".95 quantile: ", np.quantile(tokenized_lens, .95))
-    print('Number of comments under {} tokens: {}'.format(
-        max_len,
-        len(np.argwhere(np.array(tokenized_lens) < max_len))
-    ))
-
-    del imdb_df_tk_train
+#
+# def get_token_stats(train_df, model_id, n_cores=4, max_len=256):
+#     """ Print out statistics on the length of tokenized texts.
+#
+#     Args:
+#         train_df (DataFrame): original data
+#         model_id (str): identifier of the transformer model
+#         n_cores (int): number of workers to spawn
+#         max_len (int): maximum length of a sequence
+#
+#     Returns:
+#
+#     """
+#
+#     start_time = time.time()
+#
+#     imdb_df_tk_train = parallel_tokenizer(
+#         model_id=model_id,
+#         df=train_df,
+#         n_workers=n_cores
+#     )
+#
+#     print('Tokenization took {:.2f} seconds'.format(time.time() - start_time))
+#
+#     tokenized_lens = [len(t) for t in imdb_df_tk_train['tokenized_text']]
+#
+#     print(describe(tokenized_lens))
+#     print(".05 quantile: ", np.quantile(tokenized_lens, .05))
+#     print("Q1 quartile: ", np.quantile(tokenized_lens, .25))
+#     print("Q2 quartile: ", np.quantile(tokenized_lens, .50))
+#     print("Q3 quartile: ", np.quantile(tokenized_lens, .75))
+#     print(".95 quantile: ", np.quantile(tokenized_lens, .95))
+#     print('Number of comments under {} tokens: {}'.format(
+#         max_len,
+#         len(np.argwhere(np.array(tokenized_lens) < max_len))
+#     ))
+#
+#     del imdb_df_tk_train
 
 
 def load_split_tokenized_data_rand(dataset='imdb', n_cpu=4, max_len=256, seed=42, split=True, is_torch=True):
@@ -272,7 +272,7 @@ def load_split_tokenized_data(dataset='imdb', n_cpu=4, max_len=256, seed=42, spl
         train_daux_raw = train_raw.select(range(12500, 25000))
         test_raw = dataset["test"].shuffle(seed=seed)
 
-    tokenizer = BertTokenizer.from_pretrained(model_id, do_lower_case=True)
+    tokenizer = AutoTokenizer.from_pretrained(model_id, do_lower_case=True)
 
     def tokenize_function(examples):
         return tokenizer(examples["text"], padding="max_length", truncation=True, max_length=max_len)
