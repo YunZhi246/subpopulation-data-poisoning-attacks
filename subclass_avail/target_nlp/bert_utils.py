@@ -38,7 +38,8 @@ def get_bert_name():
         str: identifier of the BERT model
     """
 
-    return 'bert-base-uncased'
+    # return 'bert-base-uncased'
+    return "xlnet-base-cased"
 
 
 def get_model_name():
@@ -48,17 +49,24 @@ def get_model_name():
         str: identifier of the BERT model
     """
 
-    return 'bert'
+    # return 'bert'
+    return "xlnet"
+
 
 def get_model_class():
-    return BertForSequenceClassification
+    # return BertForSequenceClassification
+    return XLNetForSequenceClassification
 
 
 def get_tokenizer():
-    return AutoTokenizer.from_pretrained(get_bert_name(), do_lower_case=True)
+    # return AutoTokenizer.from_pretrained(get_bert_name(), do_lower_case=True)
+    return AutoTokenizer.from_pretrained(get_bert_name())
+
 
 def get_res_path():
-    return common.results_dir_bert
+    # return common.results_dir_bert
+    return common.results_dir_xlnet
+
 
 def get_device():
     """ Return string identifier of available device
@@ -768,7 +776,7 @@ def get_representations(model_name, model, data_loader, f_name, b_size=8):
                 attentions = outputs['attentions']
 
                 # Bert is 12 layers deep, the 13th layer is the classifier.
-                representation = hidden_states[11].cpu().to_numpy()
+                representation = hidden_states[11].cpu()
 
                 # Add batch representation to correct location in mmapped array
                 buff[i * b_size: i * b_size + b_size] = representation
