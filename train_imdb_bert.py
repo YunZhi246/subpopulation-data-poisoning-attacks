@@ -90,7 +90,7 @@ def fine_tune_bert(args):
 
         # Evaluation
         pred = bert_utils.predict_bert(model, device, test_dl)
-        y_test = test_df['class'].to_numpy()
+        y_test = test_df['labels']
         bert_utils.eval_classification(pred, y_test)
 
         del model, opt, loss, train_acc, pred

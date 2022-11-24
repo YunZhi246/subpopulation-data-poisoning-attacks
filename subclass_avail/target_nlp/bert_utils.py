@@ -396,7 +396,7 @@ def get_torch_data_sets(train_df, test_df):
         (TensorDataset, TensorDataset): torch dataset for training and test sets
     """
 
-    cols = ['text_ids', 'class', 'mask']
+    cols = ['input_ids', 'labels', 'attention_mask']
 
     train_x, train_y, train_att = [train_df[i].tolist() for i in cols]
     test_x, test_y, test_att = [test_df[i].tolist() for i in cols]
@@ -642,6 +642,7 @@ def train_bert(model_id, device, train_dl, lr, tot_steps, epochs, save='', froze
 
 
 def save_bert_model(model, save, is_torch=True):
+    print("Saving to {}".format(save))
     if is_torch:
         torch.save(model.state_dict(), save + '.ckpt')
     else:
@@ -742,10 +743,12 @@ def get_representations(model_name, model, data_loader, f_name, b_size=8):
                 b_input_ids, b_input_mask, b_labels = batch
 
                 outputs = model(b_input_ids, attention_mask=b_input_mask)
-                logits, hidden_states, attentions = outputs
+                logits = outputs['logits']
+                hidden_states = outputs['hidden_states']
+                attentions = outputs['attentions']
 
                 # Bert is 12 layers deep, the 13th layer is the classifier.
-                representation = hidden_states[11].cpu().numpy()
+                representation = hidden_states[11].cpu().to_numpy()
 
                 # Add batch representation to correct location in mmapped array
                 buff[i * b_size: i * b_size + b_size] = representation

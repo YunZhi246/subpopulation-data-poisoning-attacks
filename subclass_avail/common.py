@@ -9,10 +9,10 @@ import os
 
 # Change this to local stable storage, make sure there is enough free space.
 #  storage_dir = '/net/data/malware-backdoor/subpop'
-storage_dir = '/drive/MyDrive/storage/other'
+storage_dir = '/content/drive/MyDrive/storage/other'
 
 # Directory where to store results of the attack
-results_dir = '/drive/MyDrive/storage/results'
+results_dir = '/content/drive/MyDrive/storage/results'
 
 # Directories for datasets
 #  imdb_data_dir = '/net/data/malware-backdoor/subpop/dataset/aclImdb'

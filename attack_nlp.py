@@ -39,7 +39,7 @@ def init_cluster_attack(model_name_adv, is_torch_model, frozen, n_clusters, pca_
     model_adv = bert_utils.load_bert(model_file=model_name_adv, is_torch=is_torch_model)
 
     # Load dataset and split it into adversary and defender sets
-    train_def, train_adv, test = bert_utils.load_split_tokenized_data(is_torch=is_torch_model)
+    train_def, train_adv, test = bert_utils.load_split_tokenized_data()
     train_def_ds, train_def_dl, test_ds, test_dl = bert_utils.get_data_loaders(
         train_df=train_def,
         test_df=test,
@@ -146,6 +146,11 @@ def attack(args):
     is_torch_model = args['is_torch_model']
     model_name_def = args['model_name_def']
     model_name_adv = args['model_name_adv']
+
+    if model_name_def is None:
+        model_name_def = 'imdb_bert_{}_DEF.ckpt'.format('LL' if frozen else 'FT')
+    if model_name_adv is None:
+        model_name_adv = 'imdb_bert_{}_ADV.ckpt'.format('LL' if frozen else 'FT')
 
     # Initialization
     device = bert_utils.get_device()  # Check if cuda available
@@ -314,7 +319,7 @@ if __name__ == '__main__':
     parser.add_argument("--seed", help="random seed", type=int, default=42)
     parser.add_argument('--learning_rate', help='learning rate', type=float, default=1e-5)
     parser.add_argument('--poison_rate', help='poisoning rate', type=float, default=0.5)
-    parser.add_argument("--is_torch_model", help="model saved as torch format", type=bool, default=False)
+    parser.add_argument("--is_torch_model", help="model saved as torch format", type=bool, default=True)
     parser.add_argument('--model_name_def', help='def model path', type=str)
     parser.add_argument('--model_name_adv', help='adv model path', type=str)
     parser.add_argument('--frozen', action='store_true', help='fine tunes only BERT last layer and classifier')
