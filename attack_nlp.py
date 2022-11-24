@@ -305,7 +305,7 @@ def attack(args):
         gc.collect()
         torch.cuda.empty_cache()
 
-    res_path = common.results_dir_bert
+    res_path = bert_utils.get_res_path()
     res_file = 'eval-stats_clus{}_pois{}_{}'.format(n_clusters, pois_rate, 'LL' if frozen else 'FT')
     np.save(os.path.join(res_path, res_file), all_eval_stats)
 

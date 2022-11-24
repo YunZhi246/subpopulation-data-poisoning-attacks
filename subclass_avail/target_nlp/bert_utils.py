@@ -20,7 +20,7 @@ from numpy import memmap, ndarray
 from sklearn.model_selection import train_test_split
 from torch.utils.data import TensorDataset, DataLoader
 from transformers import AdamW, get_linear_schedule_with_warmup
-from transformers import BertForSequenceClassification, AutoTokenizer, BertTokenizer
+from transformers import BertForSequenceClassification, AutoTokenizer, BertTokenizer, XLNetForSequenceClassification
 from sklearn.metrics import confusion_matrix, classification_report, accuracy_score
 
 from subclass_avail import common
@@ -53,6 +53,12 @@ def get_model_name():
 def get_model_class():
     return BertForSequenceClassification
 
+
+def get_tokenizer():
+    return AutoTokenizer.from_pretrained(get_bert_name(), do_lower_case=True)
+
+def get_res_path():
+    return common.results_dir_bert
 
 def get_device():
     """ Return string identifier of available device
@@ -285,7 +291,7 @@ def load_split_tokenized_data(dataset='imdb', n_cpu=4, max_len=256, seed=42, spl
         train_daux_raw = train_raw.select(range(12500, 25000))
         test_raw = dataset["test"].shuffle(seed=seed)
 
-    tokenizer = AutoTokenizer.from_pretrained(model_id, do_lower_case=True)
+    tokenizer = get_tokenizer()
 
     def tokenize_function(examples):
         return tokenizer(examples["text"], padding="max_length", truncation=True, max_length=max_len)
