@@ -11,7 +11,7 @@ from subclass_avail import attack_utils
 from subclass_avail.target_nlp import bert_utils
 
 
-def init_cluster_attack(frozen, n_clusters, pca_dim):
+def init_cluster_attack(model_name_adv, is_torch_model, frozen, n_clusters, pca_dim):
     """ Initialize the attack.
 
     Splits the data in 3 distinct sets:
@@ -35,11 +35,11 @@ def init_cluster_attack(frozen, n_clusters, pca_dim):
     batch = 4  # This is fixed to avoid errors in the representation loading
 
     # Load pre-trained adversary BERT model
-    model_name_adv = 'imdb_bert_{}_ADV'.format('LL' if frozen else 'FT')
-    model_adv = bert_utils.load_bert(model_file=model_name_adv + '.ckpt')
+    # model_name_adv = 'imdb_bert_{}_ADV'.format('LL' if frozen else 'FT')
+    model_adv = bert_utils.load_bert(model_file=model_name_adv, is_torch=is_torch_model)
 
     # Load dataset and split it into adversary and defender sets
-    train_def, train_adv, test = bert_utils.load_split_tokenized_data()
+    train_def, train_adv, test = bert_utils.load_split_tokenized_data(is_torch=is_torch_model)
     train_def_ds, train_def_dl, test_ds, test_dl = bert_utils.get_data_loaders(
         train_df=train_def,
         test_df=test,
@@ -143,15 +143,20 @@ def attack(args):
     frozen = args['frozen']
     pois_rate = args['poison_rate']
     n_eval = args['n_eval']
+    is_torch_model = args['is_torch_model']
+    model_name_def = args['model_name_def']
+    model_name_adv = args['model_name_adv']
 
     # Initialization
     device = bert_utils.get_device()  # Check if cuda available
     bert_utils.set_seed(device, seed=seed)  # Seed all the PRNGs
-    model_name_def = 'imdb_bert_{}_DEF'.format('LL' if frozen else 'FT')
+    # model_name_def = 'imdb_bert_{}_DEF'.format('LL' if frozen else 'FT')
 
     # Initialize attack
     (x, y, ll, labels, preds), (x_ho, y_ho, ll_ho, labels_ho, preds_ho), (
         x_t, y_t, ll_t, labels_t) = init_cluster_attack(
+        model_name_adv=model_name_adv,
+        is_torch_model=is_torch_model,
         frozen=frozen,
         n_clusters=n_clusters,
         pca_dim=pca_dim
@@ -242,7 +247,8 @@ def attack(args):
             lr=lr,
             epochs=epochs,
             frozen=frozen,
-            save=save_path
+            save=save_path,
+            is_torch=is_torch_model
         )
         stats = bert_utils.eval_stats(
             model=model,
@@ -272,7 +278,7 @@ def attack(args):
         all_eval_stats[cl_ind]['pois_clus_size'] = pois_inds.shape
 
         # Compute base accuracy for defender model on the test data
-        model_def = bert_utils.load_bert(model_file=model_name_def + '.ckpt')
+        model_def = bert_utils.load_bert(model_file=model_name_def, is_torch=is_torch_model)
         pois_ds = TensorDataset(
             torch.from_numpy(xt_p),
             torch.from_numpy(xt_p_att),
@@ -308,6 +314,9 @@ if __name__ == '__main__':
     parser.add_argument("--seed", help="random seed", type=int, default=42)
     parser.add_argument('--learning_rate', help='learning rate', type=float, default=1e-5)
     parser.add_argument('--poison_rate', help='poisoning rate', type=float, default=0.5)
+    parser.add_argument("--is_torch_model", help="model saved as torch format", type=bool, default=False)
+    parser.add_argument('--model_name_def', help='def model path', type=str)
+    parser.add_argument('--model_name_adv', help='adv model path', type=str)
     parser.add_argument('--frozen', action='store_true', help='fine tunes only BERT last layer and classifier')
     parser.add_argument('--all', action='store_true', help='fine tunes BERT using the entire dataset')
 

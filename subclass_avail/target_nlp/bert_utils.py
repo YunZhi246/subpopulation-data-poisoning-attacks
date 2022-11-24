@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+from datasets import load_dataset
 from pandas import DataFrame
 from scipy.stats import describe
 from numpy import memmap, ndarray
@@ -221,7 +222,74 @@ def get_token_stats(train_df, model_id, n_cores=4, max_len=256):
     del imdb_df_tk_train
 
 
-def load_split_tokenized_data(dataset='imdb', n_cpu=4, max_len=256, seed=42, split=True):
+def load_split_tokenized_data(dataset='imdb', n_cpu=4, max_len=256, seed=42, split=True, is_torch=True):
+    """ Load preprocessed data. If unavailable, create it.
+
+    Args:
+        dataset (str): identifier od the dataset to load.
+        n_cpu (int): number of workers to spawn
+        max_len (int): maximum sequence length
+        seed (int): PRNG seed
+        split (bool): if False, return entire train and test set
+        is_torch (bool): is it torch saved
+
+    Returns:
+        DataFrame: preprocessed data
+    """
+
+    if is_torch:
+        return load_split_tokenized_data_torch(dataset, n_cpu, max_len, seed, split)
+    else:
+        return load_split_tokenized_data_huggingface(dataset, n_cpu, max_len, seed, split)
+
+
+def load_split_tokenized_data_huggingface(dataset='imdb', n_cpu=4, max_len=256, seed=42, split=True):
+    """ Load preprocessed data. If unavailable, create it.
+
+    Args:
+        dataset (str): identifier od the dataset to load.
+        n_cpu (int): number of workers to spawn
+        max_len (int): maximum sequence length
+        seed (int): PRNG seed
+        split (bool): if False, return entire train and test set
+
+    Returns:
+        DataFrame: preprocessed data
+    """
+
+    model_id = get_bert_name()
+
+    dataset = load_dataset(dataset)
+    train_raw = dataset["train"].shuffle(seed=seed)
+    train_d_raw = train_raw.select(range(12500))
+    train_daux_raw = train_raw.select(range(12500, 25000))
+    test_raw = dataset["test"].shuffle(seed=seed)
+
+    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", do_lower_case=True)
+
+    def tokenize_function(examples):
+        return tokenizer(examples["text"], padding="max_length", truncation=True, max_length=max_len)
+
+    tokenized_train_def_dataset = train_d_raw.map(tokenize_function, batched=True)
+    tokenized_train_adv_dataset = train_daux_raw.map(tokenize_function, batched=True)
+    tokenized_test_dataset = test_raw.map(tokenize_function, batched=True)
+
+    tokenized_train_def_dataset = tokenized_train_def_dataset.remove_columns(["text"])
+    tokenized_train_def_dataset = tokenized_train_def_dataset.rename_column("label", "labels")
+    tokenized_train_def_dataset.set_format("torch")
+
+    tokenized_train_adv_dataset = tokenized_train_adv_dataset.remove_columns(["text"])
+    tokenized_train_adv_dataset = tokenized_train_adv_dataset.rename_column("label", "labels")
+    tokenized_train_adv_dataset.set_format("torch")
+
+    tokenized_test_dataset = tokenized_test_dataset.remove_columns(["text"])
+    tokenized_test_dataset = tokenized_test_dataset.rename_column("label", "labels")
+    tokenized_test_dataset.set_format("torch")
+
+    return tokenized_train_def_dataset, tokenized_train_adv_dataset, tokenized_test_dataset
+
+
+def load_split_tokenized_data_torch(dataset='imdb', n_cpu=4, max_len=256, seed=42, split=True):
     """ Load preprocessed data. If unavailable, create it.
 
     Args:
@@ -398,7 +466,7 @@ def get_data_loaders(train_df, test_df, batch_size=8, shuffle=True):
 
 # BERT CORE FUNCTIONS
 
-def wrap_train(trn_x, trn_y, trn_x_att, b_size=8, lr=1e-5, epochs=4, frozen=False, save=''):
+def wrap_train(trn_x, trn_y, trn_x_att, b_size=8, lr=1e-5, epochs=4, frozen=False, save='', is_torch=True):
     """ Wrapper for the training function to use in the attack.
 
     Args:
@@ -433,13 +501,14 @@ def wrap_train(trn_x, trn_y, trn_x_att, b_size=8, lr=1e-5, epochs=4, frozen=Fals
         tot_steps,
         epochs,
         save=save,
-        frozen=frozen
+        frozen=frozen,
+        is_torch=is_torch
     )
 
     return model
 
 
-def train_bert(model_id, device, train_dl, lr, tot_steps, epochs, save='', frozen=False):
+def train_bert(model_id, device, train_dl, lr, tot_steps, epochs, save='', frozen=False, is_torch=True):
     """ Fine tune an instance of BERT.
 
     Args:
@@ -559,9 +628,16 @@ def train_bert(model_id, device, train_dl, lr, tot_steps, epochs, save='', froze
     # Save fine tuned model
     if not save:
         save = 'bert_tuned'
-    torch.save(model.state_dict(), save + '.ckpt')
+    save_bert_model(model, save, is_torch)
 
     return model, optimizer, train_losses, train_accuracies
+
+
+def save_bert_model(model, save, is_torch=True):
+    if is_torch:
+        torch.save(model.state_dict(), save + '.ckpt')
+    else:
+        model.save_pretrained(save)
 
 
 def predict_bert(model, device, test_dl, raw=False, acc=False):
@@ -738,7 +814,25 @@ def flat_accuracy(preds, labels):
     return np.sum(pred_flat == labels_flat) / len(labels_flat)
 
 
-def load_bert(model_file):
+def load_bert(model_file, is_torch=True):
+    """ Load trained instances of BERT
+
+    Args:
+        model_file (str): name of the checkpoint file for defender model
+        is_torch (bool): model is torch saved
+
+    Returns:
+        BertForSequenceClassification: trained model
+
+    """
+
+    if is_torch:
+        return load_bert_torch(model_file)
+    else:
+        return load_bert_huggingface(model_file)
+
+
+def load_bert_torch(model_file):
     """ Load trained instances of BERT
 
     Args:
@@ -764,6 +858,36 @@ def load_bert(model_file):
         num_labels=2
     )
     model.load_state_dict(torch.load(_path))
+
+    return model
+
+
+def load_bert_huggingface(model_file):
+    """ Load trained instances of BERT
+
+    Args:
+        model_file (str): name of the checkpoint file for defender model
+
+    Returns:
+        BertForSequenceClassification: trained model
+
+    """
+
+    # model_id = get_bert_name()
+
+    _path = os.path.join(common.saved_models_dir, model_file)
+
+    if not os.path.isfile(_path):
+        raise FileNotFoundError('Cannot find trained BERT model: {}'.format(_path))
+
+    print('Loading model: {}'.format(model_file))
+    model = BertForSequenceClassification.from_pretrained(
+        _path,
+        output_hidden_states=True,
+        output_attentions=True,
+        num_labels=2
+    )
+    # model.load_state_dict(torch.load(_path))
 
     return model
 
