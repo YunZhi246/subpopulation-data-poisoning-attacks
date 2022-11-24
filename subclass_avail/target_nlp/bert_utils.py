@@ -27,6 +27,8 @@ from subclass_avail import common
 from subclass_avail.target_nlp import train_bert_attack
 
 
+TEST = True
+
 # SETUP
 
 def get_bert_name():
@@ -222,7 +224,7 @@ def get_token_stats(train_df, model_id, n_cores=4, max_len=256):
     del imdb_df_tk_train
 
 
-def load_split_tokenized_data(dataset='imdb', n_cpu=4, max_len=256, seed=42, split=True, is_torch=True):
+def load_split_tokenized_data_rand(dataset='imdb', n_cpu=4, max_len=256, seed=42, split=True, is_torch=True):
     """ Load preprocessed data. If unavailable, create it.
 
     Args:
@@ -240,10 +242,10 @@ def load_split_tokenized_data(dataset='imdb', n_cpu=4, max_len=256, seed=42, spl
     if is_torch:
         return load_split_tokenized_data_torch(dataset, n_cpu, max_len, seed, split)
     else:
-        return load_split_tokenized_data_huggingface(dataset, n_cpu, max_len, seed, split)
+        return load_split_tokenized_data(dataset, n_cpu, max_len, seed, split)
 
 
-def load_split_tokenized_data_huggingface(dataset='imdb', n_cpu=4, max_len=256, seed=42, split=True):
+def load_split_tokenized_data(dataset='imdb', n_cpu=4, max_len=256, seed=42, split=True):
     """ Load preprocessed data. If unavailable, create it.
 
     Args:
@@ -261,11 +263,16 @@ def load_split_tokenized_data_huggingface(dataset='imdb', n_cpu=4, max_len=256, 
 
     dataset = load_dataset(dataset)
     train_raw = dataset["train"].shuffle(seed=seed)
-    train_d_raw = train_raw.select(range(12500))
-    train_daux_raw = train_raw.select(range(12500, 25000))
-    test_raw = dataset["test"].shuffle(seed=seed)
+    if TEST:
+        train_d_raw = train_raw.select(range(500))
+        train_daux_raw = train_raw.select(range(500, 1000))
+        test_raw = dataset["test"].shuffle(seed=seed).select(range(1000))
+    else:
+        train_d_raw = train_raw.select(range(12500))
+        train_daux_raw = train_raw.select(range(12500, 25000))
+        test_raw = dataset["test"].shuffle(seed=seed)
 
-    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", do_lower_case=True)
+    tokenizer = BertTokenizer.from_pretrained(model_id, do_lower_case=True)
 
     def tokenize_function(examples):
         return tokenizer(examples["text"], padding="max_length", truncation=True, max_length=max_len)
@@ -520,6 +527,7 @@ def train_bert(model_id, device, train_dl, lr, tot_steps, epochs, save='', froze
         epochs (int): number of epochs to train
         save (str): name of the checkpoint file to use
         frozen (bool): if true, freeze BERT and train only the classifier
+        is_torch(bool): is it torch
 
     Returns:
         (BertForSequenceClassification, AdamW, list, list): trained model,

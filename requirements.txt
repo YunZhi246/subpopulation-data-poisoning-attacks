@@ -9,3 +9,4 @@ torchvision==0.5.0
 tqdm==4.43.0
 transformers==2.5.0
 tables==3.6.1
+datasets

@@ -9,14 +9,14 @@ import os
 
 # Change this to local stable storage, make sure there is enough free space.
 #  storage_dir = '/net/data/malware-backdoor/subpop'
-storage_dir = '/media/storage/projects/research/advml/subclass'
+storage_dir = '/drive/MyDrive/storage/other'
 
 # Directory where to store results of the attack
-results_dir = 'results'
+results_dir = '/drive/MyDrive/storage/results'
 
 # Directories for datasets
 #  imdb_data_dir = '/net/data/malware-backdoor/subpop/dataset/aclImdb'
-imdb_data_dir = '/media/storage/data/imbd_reviews/aclImdb'
+imdb_data_dir = '/content/storage/data/imbd_reviews/aclImdb'
 data_dir_map = {
     'imdb': imdb_data_dir
 }
