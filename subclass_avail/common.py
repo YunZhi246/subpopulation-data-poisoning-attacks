@@ -25,6 +25,7 @@ data_dir_map = {
 
 # Directory where to store trained/fine tuned models
 saved_models_dir = os.path.join(storage_dir, 'saved_models')
+saved_models_victim_dir = os.path.join(storage_dir, 'saved_models/victims')
 
 # Directory containing the results of the experiments
 results_dir_bert = os.path.join(results_dir, 'bert')
@@ -38,6 +39,7 @@ ALL_DIRS = [
     storage_dir,
     results_dir,
     saved_models_dir,
+    saved_models_victim_dir,
     results_dir_bert,
     results_dir_xlnet,
     mmap_dir

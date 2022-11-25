@@ -243,7 +243,7 @@ def attack(args):
         print('Training new model')
         model_name = bert_utils.get_model_name()
         save_path = os.path.join(
-            common.saved_models_dir,
+            common.saved_models_victim_dir,
             'victim_{}_{}'.format(model_name, cl_ind)
         )
         model = bert_utils.wrap_train(
