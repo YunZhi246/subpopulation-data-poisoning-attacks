@@ -130,7 +130,131 @@ def init_cluster_attack(model_name_adv, is_torch_model, frozen, n_clusters, pca_
            (x_t, y_t, ll_t, labels_t)
 
 
-def attack(args):
+def attack_once(args, cl_ind, labels, labels_t, labels_ho, preds_ho,
+                x, x_att, x_ho, x_ho_att, x_t, x_t_att, y, y_t, y_ho):
+    # Unpack
+    batch = args['batch']
+    epochs = args['epochs']
+    lr = args['learning_rate']
+    frozen = args['frozen']
+    pois_rate = args['poison_rate']
+    is_torch_model = args['is_torch_model']
+    model_name_def = args['model_name_def']
+
+    device = bert_utils.get_device()
+
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    trn_inds = np.where(labels == cl_ind)[0]
+    tst_inds = np.where(labels_t == cl_ind)[0]
+    ho_inds = np.where(labels_ho == cl_ind)[0]
+    pois_inds = np.random.choice(
+        ho_inds,
+        int(ho_inds.shape[0] * pois_rate),
+        replace=True
+    )
+    print("cluster ind:", cl_ind)
+    print("train cluster size:", trn_inds.shape[0])
+    print("test cluster size:", tst_inds.shape[0])
+    print("pois cluster size", pois_inds.shape[0])
+    trn_x = x
+    trn_y = y
+    trn_x_att = x_att
+
+    preds_cl = preds_ho[ho_inds].sum(axis=0)
+    assert preds_cl.size == 2
+
+    worst_class = np.argmin(preds_cl)
+    print(worst_class, preds_cl)
+
+    pois_x = np.take(x_ho, pois_inds, axis=0)
+    pois_y = np.take(y_ho, pois_inds, axis=0)
+    pois_x_att = np.take(x_ho_att, pois_inds, axis=0)
+
+    pois_y[:] = worst_class  # Assigns the worst class label to every poison point
+    trn_x = np.concatenate((trn_x, pois_x))
+    trn_y = np.concatenate((trn_y, pois_y))
+    trn_x_att = np.concatenate((trn_x_att, pois_x_att))
+    rand_inds = np.random.choice(trn_x.shape[0], trn_x.shape[0], replace=False)
+    xt_p, xt_p_att, yt_p = x_t[tst_inds], x_t_att[tst_inds], y_t[tst_inds]
+
+    # Create the subset of the test set not containing the targeted
+    # sub population to compute the collateral damage
+    x_coll = x_t[[i for i in range(x_t.shape[0]) if i not in tst_inds]]
+    x_coll_att = x_t_att[[i for i in range(x_t_att.shape[0]) if i not in tst_inds]]
+    y_coll = y_t[[i for i in range(y_t.shape[0]) if i not in tst_inds]]
+    print('\nx coll shape: {}\nx_att coll shape:{}\ny coll shape: {}'.format(
+        x_coll.shape, x_coll_att.shape, y_coll.shape))
+
+    print('Training new model')
+    model_name = bert_utils.get_model_name()
+    save_path = os.path.join(
+        common.saved_models_victim_dir,
+        'victim_{}_{}'.format(model_name, cl_ind)
+    )
+    model = bert_utils.wrap_train(
+        trn_x[rand_inds],
+        trn_y[rand_inds],
+        trn_x_att[rand_inds],
+        b_size=batch,
+        lr=lr,
+        epochs=epochs,
+        frozen=frozen,
+        save=save_path,
+        is_torch=is_torch_model
+    )
+    stats = bert_utils.eval_stats(
+        model=model,
+        trn_x=trn_x[rand_inds],
+        trn_x_att=trn_x_att[rand_inds],
+        trn_y=trn_y[rand_inds],
+        x_t=x_t,
+        x_t_att=x_t_att,
+        y_t=y_t,
+        xt_p=xt_p,
+        xt_p_att=xt_p_att,
+        yt_p=yt_p,
+        b_size=batch
+    )
+    # all_eval_stats[cl_ind] = stats
+
+    # Collateral accuracy evaluation on the attacked model
+    pois_coll_acc = bert_utils.get_accuracy_bert(model=model, x=x_coll, x_att=x_coll_att, y=y_coll, b_size=batch)
+
+    del model
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    # Save information about cluster size
+    stats['train_clus_size'] = trn_inds.shape
+    stats['test_clus_size'] = tst_inds.shape
+    stats['pois_clus_size'] = pois_inds.shape
+
+    # Compute base accuracy for defender model on the test data
+    model_def = bert_utils.load_bert(model_file=model_name_def, is_torch=is_torch_model)
+    pois_ds = TensorDataset(
+        torch.from_numpy(xt_p),
+        torch.from_numpy(xt_p_att),
+        torch.from_numpy(yt_p)
+    )
+    pois_dl = DataLoader(pois_ds, shuffle=False, batch_size=batch)
+    accuracy_def = bert_utils.predict_bert(model_def, device, pois_dl, acc=True)
+    stats['base_def'] = accuracy_def
+
+    # Collateral accuracy evaluation on the defender model, and collateral damage estimation
+    def_coll_acc = bert_utils.get_accuracy_bert(model=model_def, x=x_coll, x_att=x_coll_att, y=y_coll, b_size=batch)
+    coll_dmg = def_coll_acc - pois_coll_acc
+    stats['collateral_dmg'] = coll_dmg
+
+    print('Eval stats: {}\n\n'.format(stats))
+    del model_def
+    gc.collect()
+    torch.cuda.empty_cache()
+    return stats
+
+
+def attack_setup(args):
     print('Performing sub-population poisoning attack, received arguments:\n{}\n'.format(args))
 
     # Unpack
@@ -195,119 +319,94 @@ def attack(args):
 
     all_eval_stats = {}
 
-    for cl_ind in all_inds:
-        gc.collect()
-        torch.cuda.empty_cache()
+    print(type(cl_ind))
+    print(type(labels), type(labels_t), type(labels_ho))
+    print(type(preds_ho))
+    print(type(x), type(x_att), type(x_ho), type(x_ho_att), type(x_t), type(x_t_att))
+    print(type(y), type(y_t), type(y_ho))
 
-        trn_inds = np.where(labels == cl_ind)[0]
-        tst_inds = np.where(labels_t == cl_ind)[0]
-        ho_inds = np.where(labels_ho == cl_ind)[0]
-        pois_inds = np.random.choice(
-            ho_inds,
-            int(ho_inds.shape[0] * pois_rate),
-            replace=True
-        )
-        print("cluster ind:", cl_ind)
-        print("train cluster size:", trn_inds.shape[0])
-        print("test cluster size:", tst_inds.shape[0])
-        print("pois cluster size", pois_inds.shape[0])
-        trn_x = x
-        trn_y = y
-        trn_x_att = x_att
+    setup_params = {}
+    setup_params["cl_ind"] = cl_ind
+    setup_params["labels"] = cl_ind
+    setup_params["labels_t"] = cl_ind
+    setup_params["labels_ho"] = cl_ind
+    setup_params["preds_ho"] = cl_ind
+    setup_params["x"] = cl_ind
+    setup_params["x_att"] = cl_ind
+    setup_params["x_ho"] = cl_ind
+    setup_params["x_ho_att"] = cl_ind
+    setup_params["x_t"] = cl_ind
+    setup_params["x_t_att"] = cl_ind
+    setup_params["y"] = cl_ind
+    setup_params["y_t"] = cl_ind
+    setup_params["y_ho"] = cl_ind
 
-        preds_cl = preds_ho[ho_inds].sum(axis=0)
-        assert preds_cl.size == 2
+    model_name = bert_utils.get_model_name()
+    save_path = os.path.join(
+        common.saved_models_victim_dir,
+        'attack_setup_{}_{}'.format(model_name, pois_rate)
+    )
+    np.save(save_path, setup_params)
 
-        worst_class = np.argmin(preds_cl)
-        print(worst_class, preds_cl)
+    # for cl_ind in all_inds:
+    #     stats = attack_once(args, cl_ind, labels, labels_t, labels_ho, preds_ho,
+    #                         x, x_att, x_ho, x_ho_att, x_t, x_t_att, y, y_t, y_ho)
+    #     all_eval_stats[stats] = cl_ind
+    #
+    # res_path = bert_utils.get_res_path()
+    # res_file = 'eval-stats_clus{}_pois{}_{}'.format(n_clusters, pois_rate, 'LL' if frozen else 'FT')
+    # np.save(os.path.join(res_path, res_file), all_eval_stats)
 
-        pois_x = np.take(x_ho, pois_inds, axis=0)
-        pois_y = np.take(y_ho, pois_inds, axis=0)
-        pois_x_att = np.take(x_ho_att, pois_inds, axis=0)
 
-        pois_y[:] = worst_class  # Assigns the worst class label to every poison point
-        trn_x = np.concatenate((trn_x, pois_x))
-        trn_y = np.concatenate((trn_y, pois_y))
-        trn_x_att = np.concatenate((trn_x_att, pois_x_att))
-        rand_inds = np.random.choice(trn_x.shape[0], trn_x.shape[0], replace=False)
-        xt_p, xt_p_att, yt_p = x_t[tst_inds], x_t_att[tst_inds], y_t[tst_inds]
+def attack_clusters(args):
+    batch = args['batch']
+    epochs = args['epochs']
+    n_clusters = args['n_clusters']
+    pca_dim = args['pca_dim']
+    seed = args['seed']
+    lr = args['learning_rate']
+    frozen = args['frozen']
+    pois_rate = args['poison_rate']
+    n_eval = args['n_eval']
+    is_torch_model = args['is_torch_model']
+    model_name_def = args['model_name_def']
+    model_name_adv = args['model_name_adv']
 
-        # Create the subset of the test set not containing the targeted
-        # sub population to compute the collateral damage
-        x_coll = x_t[[i for i in range(x_t.shape[0]) if i not in tst_inds]]
-        x_coll_att = x_t_att[[i for i in range(x_t_att.shape[0]) if i not in tst_inds]]
-        y_coll = y_t[[i for i in range(y_t.shape[0]) if i not in tst_inds]]
-        print('\nx coll shape: {}\nx_att coll shape:{}\ny coll shape: {}'.format(
-            x_coll.shape, x_coll_att.shape, y_coll.shape))
+    model_name = bert_utils.get_model_name()
+    save_path = os.path.join(
+        common.saved_models_victim_dir,
+        'attack_setup_{}_{}'.format(model_name, pois_rate)
+    )
+    setup_params = np.load(save_path)
 
-        print('Training new model')
-        model_name = bert_utils.get_model_name()
-        save_path = os.path.join(
-            common.saved_models_victim_dir,
-            'victim_{}_{}'.format(model_name, cl_ind)
-        )
-        model = bert_utils.wrap_train(
-            trn_x[rand_inds],
-            trn_y[rand_inds],
-            trn_x_att[rand_inds],
-            b_size=batch,
-            lr=lr,
-            epochs=epochs,
-            frozen=frozen,
-            save=save_path,
-            is_torch=is_torch_model
-        )
-        stats = bert_utils.eval_stats(
-            model=model,
-            trn_x=trn_x[rand_inds],
-            trn_x_att=trn_x_att[rand_inds],
-            trn_y=trn_y[rand_inds],
-            x_t=x_t,
-            x_t_att=x_t_att,
-            y_t=y_t,
-            xt_p=xt_p,
-            xt_p_att=xt_p_att,
-            yt_p=yt_p,
-            b_size=batch
-        )
-        all_eval_stats[cl_ind] = stats
+    cl_ind = setup_params["cl_ind"]
+    labels = setup_params["labels"]
+    labels_t = setup_params["labels_t"]
+    labels_ho = setup_params["labels_ho"]
+    preds_ho = setup_params["preds_ho"]
+    x = setup_params["x"]
+    x_att = setup_params["x_att"]
+    x_ho = setup_params["x_ho"]
+    x_ho_att = setup_params["x_ho_att"]
+    x_t = setup_params["x_t"]
+    x_t_att = setup_params["x_t_att"]
+    y = setup_params["y"]
+    y_t = setup_params["y_t"]
+    y_ho = setup_params["y_ho"]
 
-        # Collateral accuracy evaluation on the attacked model
-        pois_coll_acc = bert_utils.get_accuracy_bert(model=model, x=x_coll, x_att=x_coll_att, y=y_coll, b_size=batch)
+    print(type(cl_ind))
+    print(type(labels), type(labels_t), type(labels_ho))
+    print(type(preds_ho))
+    print(type(x), type(x_att), type(x_ho), type(x_ho_att), type(x_t), type(x_t_att))
+    print(type(y), type(y_t), type(y_ho))
 
-        del model
-        gc.collect()
-        torch.cuda.empty_cache()
 
-        # Save information about cluster size
-        all_eval_stats[cl_ind]['train_clus_size'] = trn_inds.shape
-        all_eval_stats[cl_ind]['test_clus_size'] = tst_inds.shape
-        all_eval_stats[cl_ind]['pois_clus_size'] = pois_inds.shape
-
-        # Compute base accuracy for defender model on the test data
-        model_def = bert_utils.load_bert(model_file=model_name_def, is_torch=is_torch_model)
-        pois_ds = TensorDataset(
-            torch.from_numpy(xt_p),
-            torch.from_numpy(xt_p_att),
-            torch.from_numpy(yt_p)
-        )
-        pois_dl = DataLoader(pois_ds, shuffle=False, batch_size=batch)
-        accuracy_def = bert_utils.predict_bert(model_def, device, pois_dl, acc=True)
-        all_eval_stats[cl_ind]['base_def'] = accuracy_def
-
-        # Collateral accuracy evaluation on the defender model, and collateral damage estimation
-        def_coll_acc = bert_utils.get_accuracy_bert(model=model_def, x=x_coll, x_att=x_coll_att, y=y_coll, b_size=batch)
-        coll_dmg = def_coll_acc - pois_coll_acc
-        all_eval_stats[cl_ind]['collateral_dmg'] = coll_dmg
-
-        print('Eval stats: {}\n\n'.format(all_eval_stats[cl_ind]))
-        del model_def
-        gc.collect()
-        torch.cuda.empty_cache()
-
-    res_path = bert_utils.get_res_path()
-    res_file = 'eval-stats_clus{}_pois{}_{}'.format(n_clusters, pois_rate, 'LL' if frozen else 'FT')
-    np.save(os.path.join(res_path, res_file), all_eval_stats)
+def attack(args):
+    setup = args['setup']
+    if setup:
+        attack_setup(args)
+    else:
+        attack_clusters(args)
 
 
 if __name__ == '__main__':
@@ -326,6 +425,7 @@ if __name__ == '__main__':
     parser.add_argument('--model_name_adv', help='adv model path', type=str)
     parser.add_argument('--frozen', action='store_true', help='fine tunes only BERT last layer and classifier')
     parser.add_argument('--all', action='store_true', help='fine tunes BERT using the entire dataset')
+    parser.add_argument("--setup", help="setup attack", type=bool, default=True)
 
     arguments = vars(parser.parse_args())
     attack(arguments)

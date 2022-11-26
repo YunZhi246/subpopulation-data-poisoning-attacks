@@ -27,7 +27,7 @@ from subclass_avail import common
 from subclass_avail.target_nlp import train_bert_attack
 
 
-TEST = False
+TEST = True
 
 # SETUP
 
