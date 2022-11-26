@@ -138,13 +138,21 @@ def attack_once(args, cl_ind, labels, labels_t, labels_ho, preds_ho,
     lr = args['learning_rate']
     frozen = args['frozen']
     pois_rate = args['poison_rate']
-    is_torch_model = args['is_torch_model']
     model_name_def = args['model_name_def']
+    no_torch_model = args['no_torch_model']
+
+    is_torch_model = True
+    if no_torch_model:
+        is_torch_model = False
 
     device = bert_utils.get_device()
 
     gc.collect()
     torch.cuda.empty_cache()
+
+    model_name = bert_utils.get_model_name()
+    if model_name_def is None:
+        model_name_def = 'imdb_{}_{}_DEF.ckpt'.format(model_name, 'LL' if frozen else 'FT')
 
     trn_inds = np.where(labels == cl_ind)[0]
     tst_inds = np.where(labels_t == cl_ind)[0]
@@ -258,17 +266,13 @@ def attack_setup(args):
     print('Performing sub-population poisoning attack, received arguments:\n{}\n'.format(args))
 
     # Unpack
-    batch = args['batch']
-    epochs = args['epochs']
     n_clusters = args['n_clusters']
     pca_dim = args['pca_dim']
     seed = args['seed']
-    lr = args['learning_rate']
     frozen = args['frozen']
     pois_rate = args['poison_rate']
     n_eval = args['n_eval']
     no_torch_model = args['no_torch_model']
-    model_name_def = args['model_name_def']
     model_name_adv = args['model_name_adv']
 
     is_torch_model = True
@@ -278,8 +282,6 @@ def attack_setup(args):
     common.create_dirs()
 
     model_name = bert_utils.get_model_name()
-    if model_name_def is None:
-        model_name_def = 'imdb_{}_{}_DEF.ckpt'.format(model_name, 'LL' if frozen else 'FT')
     if model_name_adv is None:
         model_name_adv = 'imdb_{}_{}_ADV.ckpt'.format(model_name, 'LL' if frozen else 'FT')
 
@@ -323,16 +325,8 @@ def attack_setup(args):
         conf_ordered[-n_eval:].ravel().tolist()
     print('Indices of clusters to evaluate: {}\n{}\n'.format(len(all_inds), all_inds))
 
-    all_eval_stats = {}
-
-    print(type(cl_ind))
-    print(type(labels), type(labels_t), type(labels_ho))
-    print(type(preds_ho))
-    print(type(x), type(x_att), type(x_ho), type(x_ho_att), type(x_t), type(x_t_att))
-    print(type(y), type(y_t), type(y_ho))
-
     setup_params = {}
-    setup_params["cl_ind"] = cl_ind
+    setup_params["all_inds"] = all_inds
     setup_params["labels"] = labels
     setup_params["labels_t"] = labels_t
     setup_params["labels_ho"] = labels_ho
@@ -354,29 +348,13 @@ def attack_setup(args):
     )
     np.save(save_path, setup_params)
 
-    # for cl_ind in all_inds:
-    #     stats = attack_once(args, cl_ind, labels, labels_t, labels_ho, preds_ho,
-    #                         x, x_att, x_ho, x_ho_att, x_t, x_t_att, y, y_t, y_ho)
-    #     all_eval_stats[stats] = cl_ind
-    #
-    # res_path = bert_utils.get_res_path()
-    # res_file = 'eval-stats_clus{}_pois{}_{}'.format(n_clusters, pois_rate, 'LL' if frozen else 'FT')
-    # np.save(os.path.join(res_path, res_file), all_eval_stats)
-
 
 def attack_clusters(args):
-    batch = args['batch']
-    epochs = args['epochs']
     n_clusters = args['n_clusters']
-    pca_dim = args['pca_dim']
-    seed = args['seed']
-    lr = args['learning_rate']
     frozen = args['frozen']
     pois_rate = args['poison_rate']
-    n_eval = args['n_eval']
-    is_torch_model = args['is_torch_model']
-    model_name_def = args['model_name_def']
-    model_name_adv = args['model_name_adv']
+    n_start = args['n_start']
+    n_attack = args['n_attack']
 
     common.create_dirs()
 
@@ -385,9 +363,9 @@ def attack_clusters(args):
         common.saved_models_victim_dir,
         'attack_setup_{}_{}.npy'.format(model_name, pois_rate)
     )
-    setup_params = np.load(save_path)
+    setup_params = np.load(save_path, allow_pickle=True).item()
 
-    cl_ind = setup_params["cl_ind"]
+    all_inds = setup_params["all_inds"]
     labels = setup_params["labels"]
     labels_t = setup_params["labels_t"]
     labels_ho = setup_params["labels_ho"]
@@ -402,11 +380,18 @@ def attack_clusters(args):
     y_t = setup_params["y_t"]
     y_ho = setup_params["y_ho"]
 
-    print(type(cl_ind))
-    print(type(labels), type(labels_t), type(labels_ho))
-    print(type(preds_ho))
-    print(type(x), type(x_att), type(x_ho), type(x_ho_att), type(x_t), type(x_t_att))
-    print(type(y), type(y_t), type(y_ho))
+    print('Indices of clusters to evaluate: {}\n{}\n'.format(len(all_inds), all_inds))
+
+    all_eval_stats = {}
+    for i in range(n_start, min(n_start + n_attack, len(all_inds))):
+        cl_ind = all_inds[i]
+        stats = attack_once(args, cl_ind, labels, labels_t, labels_ho, preds_ho,
+                            x, x_att, x_ho, x_ho_att, x_t, x_t_att, y, y_t, y_ho)
+        all_eval_stats[cl_ind] = stats
+
+    res_path = bert_utils.get_res_path()
+    res_file = 'eval-stats_clus{}_pois{}_{}-{}_{}'.format(n_clusters, pois_rate, 'LL' if frozen else 'FT', n_start, i)
+    np.save(os.path.join(res_path, res_file), all_eval_stats)
 
 
 def attack(args):
@@ -439,7 +424,8 @@ if __name__ == '__main__':
     parser.add_argument('--all', action='store_true', help='fine tunes BERT using the entire dataset')
     parser.add_argument("--setup", action="store_true", help="model used")
     parser.add_argument("--no_setup", action="store_true", help="model used")
-
+    parser.add_argument("--n_start", help="cluster index to start at", type=int, default=0)
+    parser.add_argument("--n_attack", help="number of clusters attack", type=int, default=1)
 
     arguments = vars(parser.parse_args())
     attack(arguments)
