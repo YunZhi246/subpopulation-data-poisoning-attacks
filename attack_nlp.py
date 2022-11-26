@@ -267,9 +267,15 @@ def attack_setup(args):
     frozen = args['frozen']
     pois_rate = args['poison_rate']
     n_eval = args['n_eval']
-    is_torch_model = args['is_torch_model']
+    no_torch_model = args['no_torch_model']
     model_name_def = args['model_name_def']
     model_name_adv = args['model_name_adv']
+
+    is_torch_model = True
+    if no_torch_model:
+        is_torch_model = False
+
+    common.create_dirs()
 
     model_name = bert_utils.get_model_name()
     if model_name_def is None:
@@ -327,19 +333,19 @@ def attack_setup(args):
 
     setup_params = {}
     setup_params["cl_ind"] = cl_ind
-    setup_params["labels"] = cl_ind
-    setup_params["labels_t"] = cl_ind
-    setup_params["labels_ho"] = cl_ind
-    setup_params["preds_ho"] = cl_ind
-    setup_params["x"] = cl_ind
-    setup_params["x_att"] = cl_ind
-    setup_params["x_ho"] = cl_ind
-    setup_params["x_ho_att"] = cl_ind
-    setup_params["x_t"] = cl_ind
-    setup_params["x_t_att"] = cl_ind
-    setup_params["y"] = cl_ind
-    setup_params["y_t"] = cl_ind
-    setup_params["y_ho"] = cl_ind
+    setup_params["labels"] = labels
+    setup_params["labels_t"] = labels_t
+    setup_params["labels_ho"] = labels_ho
+    setup_params["preds_ho"] = preds_ho
+    setup_params["x"] = x
+    setup_params["x_att"] = x_att
+    setup_params["x_ho"] = x_ho
+    setup_params["x_ho_att"] = x_ho_att
+    setup_params["x_t"] = x_t
+    setup_params["x_t_att"] = x_t_att
+    setup_params["y"] = y
+    setup_params["y_t"] = y_t
+    setup_params["y_ho"] = y_ho
 
     model_name = bert_utils.get_model_name()
     save_path = os.path.join(
@@ -372,10 +378,12 @@ def attack_clusters(args):
     model_name_def = args['model_name_def']
     model_name_adv = args['model_name_adv']
 
+    common.create_dirs()
+
     model_name = bert_utils.get_model_name()
     save_path = os.path.join(
         common.saved_models_victim_dir,
-        'attack_setup_{}_{}'.format(model_name, pois_rate)
+        'attack_setup_{}_{}.npy'.format(model_name, pois_rate)
     )
     setup_params = np.load(save_path)
 
@@ -402,7 +410,10 @@ def attack_clusters(args):
 
 
 def attack(args):
-    setup = args['setup']
+    no_setup = args['no_setup']
+    setup = True
+    if no_setup:
+        setup = False
     if setup:
         attack_setup(args)
     else:
@@ -420,12 +431,15 @@ if __name__ == '__main__':
     parser.add_argument("--seed", help="random seed", type=int, default=42)
     parser.add_argument('--learning_rate', help='learning rate', type=float, default=1e-5)
     parser.add_argument('--poison_rate', help='poisoning rate', type=float, default=0.5)
-    parser.add_argument("--is_torch_model", help="model saved as torch format", type=bool, default=True)
+    parser.add_argument("--no_torch_model", action="store_true", help="model saved as torch format")
+    parser.add_argument("--is_torch_model", action="store_true", help="model saved as torch format")
     parser.add_argument('--model_name_def', help='def model path', type=str)
     parser.add_argument('--model_name_adv', help='adv model path', type=str)
     parser.add_argument('--frozen', action='store_true', help='fine tunes only BERT last layer and classifier')
     parser.add_argument('--all', action='store_true', help='fine tunes BERT using the entire dataset')
-    parser.add_argument("--setup", help="setup attack", type=bool, default=True)
+    parser.add_argument("--setup", action="store_true", help="model used")
+    parser.add_argument("--no_setup", action="store_true", help="model used")
+
 
     arguments = vars(parser.parse_args())
     attack(arguments)
