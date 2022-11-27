@@ -382,16 +382,16 @@ def attack_clusters(args):
 
     print('Indices of clusters to evaluate: {}\n{}\n'.format(len(all_inds), all_inds))
 
-    all_eval_stats = {}
     for i in range(n_start, min(n_start + n_attack, len(all_inds))):
+        all_eval_stats = {}
         cl_ind = all_inds[i]
         stats = attack_once(args, cl_ind, labels, labels_t, labels_ho, preds_ho,
                             x, x_att, x_ho, x_ho_att, x_t, x_t_att, y, y_t, y_ho)
         all_eval_stats[cl_ind] = stats
 
-    res_path = bert_utils.get_res_path()
-    res_file = 'eval-stats_clus{}_pois{}_{}-{}_{}'.format(n_clusters, pois_rate, 'LL' if frozen else 'FT', n_start, i)
-    np.save(os.path.join(res_path, res_file), all_eval_stats)
+        res_path = bert_utils.get_res_path()
+        res_file = 'eval-stats_clus{}_pois{}_{}-{}'.format(n_clusters, pois_rate, 'LL' if frozen else 'FT', i)
+        np.save(os.path.join(res_path, res_file), all_eval_stats)
 
 
 def attack(args):
