@@ -902,6 +902,35 @@ def load_bert_torch(model_file):
     return model
 
 
+def load_bert_torch_path(model_path):
+    """ Load trained instances of BERT
+
+    Args:
+        model_path (str): path of the checkpoint file for defender model
+
+    Returns:
+        BertForSequenceClassification: trained model
+
+    """
+
+    model_id = get_bert_name()
+
+    if not os.path.isfile(model_path):
+        raise FileNotFoundError('Cannot find trained BERT model: {}'.format(model_path))
+
+    print('Loading model: {}'.format(model_path))
+    model_class = get_model_class()
+    model = model_class.from_pretrained(
+        model_id,
+        output_hidden_states=True,
+        output_attentions=True,
+        num_labels=2
+    )
+    model.load_state_dict(torch.load(model_path))
+
+    return model
+
+
 def load_bert_huggingface(model_file):
     """ Load trained instances of BERT
 
